@@ -1,0 +1,52 @@
+{
+    auto_https off  # Désactiver HTTPS automatique
+    {$CADDY_GLOBAL_OPTIONS}
+    
+    frankenphp {
+        {$FRANKENPHP_CONFIG}
+    }
+}
+
+{$CADDY_EXTRA_CONFIG}
+
+:80 {  # Écouter uniquement sur HTTP
+    log {
+        {$CADDY_SERVER_LOG_OPTIONS}
+        format filter {
+            request>uri query {
+                replace authorization REDACTED
+            }
+        }
+    }
+
+    root * /app/public
+    encode zstd br gzip
+
+    mercure {
+        transport_url {$MERCURE_TRANSPORT_URL:bolt:///data/mercure.db}
+        publisher_jwt {env.MERCURE_PUBLISHER_JWT_KEY} {env.MERCURE_PUBLISHER_JWT_ALG}
+        subscriber_jwt {env.MERCURE_SUBSCRIBER_JWT_KEY} {env.MERCURE_SUBSCRIBER_JWT_ALG}
+        anonymous
+        subscriptions
+        {$MERCURE_EXTRA_DIRECTIVES}
+    }
+
+    vulcain
+
+    {$CADDY_SERVER_EXTRA_DIRECTIVES}
+
+    header ?Permissions-Policy "browsing-topics=()"
+
+    @phpRoute {
+        not path /.well-known/mercure*
+        not file {path}
+    }
+    rewrite @phpRoute index.php
+
+    @frontController path index.php
+    php @frontController
+
+    file_server {
+        hide *.php
+    }
+}
